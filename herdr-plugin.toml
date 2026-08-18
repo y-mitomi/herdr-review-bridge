@@ -1,0 +1,18 @@
+id = "y-mitomi.review-bridge"
+name = "review-bridge"
+version = "0.1.0"
+min_herdr_version = "0.7.5"
+platforms = ["macos", "linux"]
+description = "Resolve the focused agent's worktree/branch and open it in a local nvim diff review session."
+
+[[panes]]
+id = "pane"
+title = "review-bridge"
+placement = "split"
+command = ["sh", "-c", "exec nvim -c \"lua require('diffview_review').open()\""]
+
+[[actions]]
+id = "open"
+title = "review-bridge: open nvim review for the focused agent"
+contexts = ["pane", "workspace"]
+command = ["bash", "herdr/open.sh"]
