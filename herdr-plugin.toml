@@ -1,18 +1,35 @@
 id = "y-mitomi.review-bridge"
 name = "review-bridge"
-version = "0.1.0"
+version = "0.3.0"
 min_herdr_version = "0.7.5"
 platforms = ["macos", "linux"]
-description = "Resolve the focused agent's worktree/branch and open it in a local nvim diff review session."
+description = "Resolve a worktree to review, open it in a browser-based difit review session, and paste submitted comments back into the target coding agent."
 
 [[panes]]
 id = "pane"
 title = "review-bridge"
-placement = "split"
-command = ["sh", "-c", "exec nvim -c \"lua require('diffview_review').open()\""]
+placement = "tab"
+# `command` is resolved relative to the process's cwd, not the plugin root —
+# and the "pane" entrypoint is opened with `--cwd <worktree>`, so a plain
+# relative path here would 404 the moment bash tries to find the script.
+# Resolve it from $HERDR_PLUGIN_ROOT (set by herdr for every plugin-launched
+# process) instead.
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/herdr/run-difit.sh\""]
+
+[[panes]]
+id = "picker"
+title = "review-bridge: pick a worktree"
+placement = "overlay"
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/herdr/pick.sh\""]
 
 [[actions]]
 id = "open"
-title = "review-bridge: open nvim review for the focused agent"
+title = "review-bridge: open a difit review for a worktree"
 contexts = ["pane", "workspace"]
-command = ["bash", "herdr/open.sh"]
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/herdr/open.sh\""]
+
+[[actions]]
+id = "submit"
+title = "review-bridge: paste submitted review comments into the target agent (internal)"
+contexts = ["pane", "workspace"]
+command = ["bash", "-c", "exec bash \"$HERDR_PLUGIN_ROOT/herdr/submit.sh\""]
