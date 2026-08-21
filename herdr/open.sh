@@ -77,10 +77,17 @@ transcript_path=$(awk -F'\t' -v p="$focused_pane" '$1 == p { t = $3 } END { prin
 [ -f "$transcript_path" ] || refuse "transcript missing: $transcript_path"
 
 # Every distinct cwd in the focused session's last 20 lines, newest first
-# (`tail -r` is macOS's `tac`; awk keeps the first = most recent occurrence).
+# (`tac` on GNU/Linux, `tail -r` on macOS/BSD where tac doesn't exist; awk
+# keeps the first = most recent occurrence).
 # All worktrees this one session recently touched are legitimate candidates —
 # but only this session's: worktrees from other panes' sessions never appear.
-cwds=$(tail -r "$transcript_path" 2>/dev/null | head -n 20 |
+if command -v tac >/dev/null 2>&1; then
+  reverse_lines() { tac "$1"; }
+else
+  reverse_lines() { tail -r "$1"; }
+fi
+
+cwds=$(reverse_lines "$transcript_path" 2>/dev/null | head -n 20 |
   rg -o '"cwd":"([^"]*)"' -r '$1' 2>/dev/null | awk '!seen[$0]++')
 [ -n "$cwds" ] || refuse "no cwd found in the focused session's recent transcript lines"
 

@@ -6,7 +6,11 @@
 # this pane after the browser tab is closed.
 set -uo pipefail
 
-export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
+# The inherited PATH comes first: it carries the user's chosen node (nix, nvm,
+# mise, ...), which difit needs at >= 21. Prepending the system dirs instead
+# would shadow it with an older /usr/bin/node and difit would die on startup.
+# The system dirs stay as a fallback for a pane spawned with a bare PATH.
+export PATH="${PATH:-}:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"
 
 worktree="${HERDR_REVIEW_WORKTREE:-}"
 [ -n "$worktree" ] && [ -d "$worktree" ] || {
