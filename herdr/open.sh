@@ -103,6 +103,10 @@ done <<<"$cwds"
 
 [ "${#candidates[@]}" -gt 0 ] || refuse "the focused session's recent cwds resolved to no git worktree"
 
+# The review happens in the browser, not in this pane — difit opens the tab
+# itself — so --no-focus keeps the terminal on the agent the review was
+# started from instead of parking it on a pane whose only job is to hold the
+# difit process.
 open_review_pane() {
   local worktree_path="$1" branch="$2" agent_pane_id="$3"
   local open_json new_pane
@@ -112,7 +116,7 @@ open_review_pane() {
     --env "HERDR_REVIEW_WORKTREE=$worktree_path" \
     --env "HERDR_REVIEW_BRANCH=$branch" \
     --env "HERDR_REVIEW_AGENT_PANE_ID=$agent_pane_id" \
-    --focus 2>/dev/null)
+    --no-focus 2>/dev/null)
   new_pane=$(printf '%s' "$open_json" | jq -r '.result.plugin_pane.pane.pane_id // empty' 2>/dev/null)
   [ -n "$new_pane" ] || refuse "herdr pane open failed"
   printf 'opened review for %s (branch %s) in %s\n' "$worktree_path" "${branch:-<detached>}" "$new_pane"

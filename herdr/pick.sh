@@ -51,13 +51,17 @@ fi
 
 IFS=$'\t' read -r worktree_path branch agent_pane_id <<<"$selected"
 
+# --no-focus for the same reason as in open.sh: the review is read in the
+# browser, so the terminal stays on the agent rather than following the pane
+# that merely hosts difit. Closing this overlay below returns focus to
+# whatever was focused before the picker opened.
 open_json=$("$H" plugin pane open --plugin "$plugin_id" --entrypoint pane \
   --placement tab --workspace "$ws" \
   --cwd "$worktree_path" \
   --env "HERDR_REVIEW_WORKTREE=$worktree_path" \
   --env "HERDR_REVIEW_BRANCH=$branch" \
   --env "HERDR_REVIEW_AGENT_PANE_ID=$agent_pane_id" \
-  --focus 2>/dev/null)
+  --no-focus 2>/dev/null)
 new_pane=$(printf '%s' "$open_json" | jq -r '.result.plugin_pane.pane.pane_id // empty' 2>/dev/null)
 
 rm -f "$candidates_file"
