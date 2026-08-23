@@ -125,19 +125,26 @@ if [ "${#candidates[@]}" -eq 1 ]; then
 fi
 
 # 2+ candidates: hand off to the interactive picker pane. Encode candidates as
-# TSV on disk (same "no payload channel into a launched pane's env/stdin from
-# here" constraint as elsewhere in this plugin — pick.sh derives its own path
-# from its own pane id, so we need this action's *new* pane id up front,
-# which `plugin pane open`'s response gives us before pick.sh ever runs).
+# TSV on disk, then name the file to pick.sh with --env.
+#
+# The file has to exist before the pane is opened: `plugin pane open` starts
+# the pane's process immediately, so pick.sh is already reading by the time
+# the response (and any pane id derived from it) reaches us. Keying the path
+# on that pane id lost the race and pick.sh reported "no candidate list".
 picker_dir="${TMPDIR:-/tmp}/herdr-review-bridge"
 mkdir -p "$picker_dir"
 
-open_json=$("$H" plugin pane open --plugin "$plugin_id" --entrypoint picker \
-  --placement overlay --focus 2>/dev/null)
-picker_pane=$(printf '%s' "$open_json" | jq -r '.result.plugin_pane.pane.pane_id // empty' 2>/dev/null)
-[ -n "$picker_pane" ] || refuse "herdr pane open (picker) failed"
-
-candidates_file="$picker_dir/${picker_pane}-candidates.tsv"
+candidates_file=$(mktemp "$picker_dir/candidates.XXXXXX") || refuse "could not create candidate list"
 printf '%s\n' "${candidates[@]}" >"$candidates_file"
+
+open_json=$("$H" plugin pane open --plugin "$plugin_id" --entrypoint picker \
+  --placement overlay \
+  --env "HERDR_REVIEW_CANDIDATES=$candidates_file" \
+  --focus 2>/dev/null)
+picker_pane=$(printf '%s' "$open_json" | jq -r '.result.plugin_pane.pane.pane_id // empty' 2>/dev/null)
+if [ -z "$picker_pane" ]; then
+  rm -f "$candidates_file"
+  refuse "herdr pane open (picker) failed"
+fi
 
 printf 'opened worktree picker in %s (%d candidates)\n' "$picker_pane" "${#candidates[@]}"
