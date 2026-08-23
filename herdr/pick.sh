@@ -3,10 +3,10 @@
 # entrypoint (a real terminal, unlike the non-interactive "open"/"submit"
 # actions), so it's the only place in this plugin that can run fzf.
 #
-# open.sh writes this pane's candidate list to a path keyed by this pane's own
-# id (known to open.sh from `plugin pane open`'s response, before this script
-# ever starts) since there's no channel to hand this script a payload
-# directly. This script re-derives the same path from HERDR_PANE_ID.
+# open.sh writes the candidate list before opening this pane and names the
+# file in HERDR_REVIEW_CANDIDATES. It cannot key the path on this pane's id:
+# `plugin pane open` starts this script as soon as the pane exists, so the id
+# in its response arrives too late to be read here.
 set -uo pipefail
 
 export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
@@ -26,7 +26,8 @@ fail() {
 
 [ -n "$pane" ] || fail "no HERDR_PANE_ID for this picker pane"
 
-candidates_file="${TMPDIR:-/tmp}/herdr-review-bridge/${pane}-candidates.tsv"
+candidates_file="${HERDR_REVIEW_CANDIDATES:-}"
+[ -n "$candidates_file" ] || fail "no HERDR_REVIEW_CANDIDATES for this picker pane"
 [ -f "$candidates_file" ] || fail "no candidate list at $candidates_file"
 
 if ! command -v fzf >/dev/null 2>&1; then
