@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # review-bridge: run inside the review pane opened by open.sh. Launches the
-# forked difit (https://github.com/y-mitomi/herdr-difit) against the resolved
+# forked difit (https://github.com/Yuto729/herdr-difit) against the resolved
 # worktree's working changes, opens it in the browser, and keeps the pane
 # alive so `herdr agent prompt`/submit.sh can still find HERDR_PANE_ID for
 # this pane after the browser tab is closed.

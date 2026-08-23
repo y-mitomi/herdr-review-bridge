@@ -14,7 +14,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 H="${HERDR_BIN_PATH:-herdr}"
 ws="${HERDR_WORKSPACE_ID:-}"
 pane="${HERDR_PANE_ID:-}"
-plugin_id="${HERDR_PLUGIN_ID:-y-mitomi.review-bridge}"
+plugin_id="${HERDR_PLUGIN_ID:-yuto729.review-bridge}"
 
 fail() {
   printf 'review-bridge picker: %s\n' "$1" >&2

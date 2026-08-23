@@ -20,7 +20,7 @@ export PATH="/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:${PATH:-}"
 
 H="${HERDR_BIN_PATH:-herdr}"
 ws="${HERDR_WORKSPACE_ID:-}"
-plugin_id="${HERDR_PLUGIN_ID:-y-mitomi.review-bridge}"
+plugin_id="${HERDR_PLUGIN_ID:-yuto729.review-bridge}"
 
 refuse() {
   printf 'review-bridge: %s\n' "$1" >&2
@@ -53,7 +53,7 @@ is_git_repo() { [ -n "$1" ] && git -C "$1" rev-parse --show-toplevel >/dev/null 
 # herdr-plugin.toml's `command = ["bash", ...]` resolves whatever bash is on
 # PATH — so this stays 3.2-compatible: plain while-read loops and dedup via a
 # linear scan of a plain indexed array instead of `declare -A`.
-sessions_table="$HOME/.config/herdr/plugins/config/y-mitomi.review-bridge/sessions.tsv"
+sessions_table="$HOME/.config/herdr/plugins/config/yuto729.review-bridge/sessions.tsv"
 [ -f "$sessions_table" ] || refuse "no session table at $sessions_table (is the review-bridge SessionStart hook installed?)"
 
 focused_pane=$(printf '%s' "${HERDR_PLUGIN_CONTEXT_JSON:-{}}" | jq -r '.focused_pane_id // empty' 2>/dev/null)

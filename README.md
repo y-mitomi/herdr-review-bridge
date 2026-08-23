@@ -2,7 +2,7 @@
 
 A herdr plugin that resolves the focused AI agent pane's git worktree,
 opens a browser-based diff review for it (via a
-[difit](https://github.com/y-mitomi/herdr-difit) fork), and pastes
+[difit](https://github.com/Yuto729/herdr-difit) fork), and pastes
 submitted review comments back into the target agent pane.
 
 ## What it does
@@ -26,7 +26,7 @@ own mapping:
 
 - A Claude Code `SessionStart` hook (`herdr/session-hook.sh`) records
   `<pane_id>\t<session_id>\t<transcript_path>` into
-  `~/.config/herdr/plugins/config/y-mitomi.review-bridge/sessions.tsv`
+  `~/.config/herdr/plugins/config/yuto729.review-bridge/sessions.tsv`
   every time a session starts inside a herdr pane.
 - `herdr/open.sh` looks up the focused pane's most recent entry, then
   scans the last 20 lines of that session's transcript JSONL for every
@@ -48,7 +48,7 @@ and uses `herdr pane send-text` (types without pressing enter) plus
 ## Install
 
 ```
-herdr plugin link ~/ghq/github.com/y-mitomi/herdr-review-bridge
+herdr plugin link ~/ghq/github.com/Yuto729/herdr-review-bridge
 ```
 
 Bind the `open` action to a key in `~/.config/herdr/config.toml`:
@@ -57,7 +57,7 @@ Bind the `open` action to a key in `~/.config/herdr/config.toml`:
 [[keys.command]]
 key = "prefix+alt+r"
 type = "plugin_action"
-command = "y-mitomi.review-bridge.open"
+command = "yuto729.review-bridge.open"
 ```
 
 ### Claude Code SessionStart hook
@@ -87,7 +87,7 @@ Claude Code `SessionStart` hook. Add this to `~/.claude/settings.json`:
 ### difit fork
 
 The "Send to Agent" browser button/`s` keybinding requires the
-[herdr-difit fork](https://github.com/y-mitomi/herdr-difit) (branch
+[herdr-difit fork](https://github.com/Yuto729/herdr-difit) (branch
 `herdr-review-integration`), linked globally as `difit` via `npm link`.
 Plain upstream `difit` still works for the review view itself, just
 without the send-back feature.

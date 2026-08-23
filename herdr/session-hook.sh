@@ -22,7 +22,7 @@ session_id=$(printf '%s' "$hook_input" | jq -r '.session_id // empty' 2>/dev/nul
 transcript_path=$(printf '%s' "$hook_input" | jq -r '.transcript_path // empty' 2>/dev/null)
 [ -n "$session_id" ] && [ -n "$transcript_path" ] || exit 0
 
-table_dir="$HOME/.config/herdr/plugins/config/y-mitomi.review-bridge"
+table_dir="$HOME/.config/herdr/plugins/config/yuto729.review-bridge"
 mkdir -p "$table_dir" 2>/dev/null || exit 0
 table_file="$table_dir/sessions.tsv"
 
