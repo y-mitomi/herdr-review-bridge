@@ -35,26 +35,31 @@ is_git_repo() { [ -n "$1" ] && git -C "$1" rev-parse --show-toplevel >/dev/null 
 # herdr API: herdr's `agent list` cwd is the agent process's OS-level cwd,
 # which never moves once Claude Code is launched from a fixed parent
 # directory and `cd`s internally (this user's normal setup) — useless for
-# worktree resolution. herdr's `pane.report_agent_session` (used by `herdr
-# integration install claude`) is write-only with no CLI/socket read path, so
-# it can't be used to look anything back up either.
+# worktree resolution.
 #
-# Instead: session-hook.sh (registered as this user's Claude Code
-# SessionStart hook) has been recording "<pane_id>\t<session_id>\t<transcript_path>"
-# into sessions_table for every session that ever started in a herdr pane.
-# The focused pane's latest entry names the transcript to scan. Each
-# transcript is a JSONL file named "<session_id>.jsonl" under
-# ~/.claude/projects/*/, and every line in it (main chain or subagent
+# Primary source (herdr 0.8.0+): `herdr pane list` exposes each pane's
+# `agent_session.value` — the pane's *interactive* Claude Code session id, as
+# reported by `herdr integration install claude`. This is authoritative:
+# unlike the SessionStart-hook table below, it can't be shadowed by nested
+# one-off `claude` invocations (skills/subprocesses) that start their own
+# sessions inside the same pane and also fire the hook.
+#
+# Fallback: session-hook.sh (registered as this user's Claude Code
+# SessionStart hook) records "<pane_id>\t<session_id>\t<transcript_path>"
+# into sessions_table for every session that ever started in a herdr pane;
+# the focused pane's latest entry names the transcript (last-write-wins, so
+# a nested session can win here — hence fallback only).
+#
+# Either way the transcript is the JSONL file named "<session_id>.jsonl"
+# under ~/.claude/projects/*/, and every line in it (main chain or subagent
 # sidechain alike) carries the *current* cwd at that point in the
-# conversation. No fallback: a focused pane with no recorded session is
-# simply not reviewable.
+# conversation.
 #
 # bash on macOS defaults to 3.2 (no `mapfile`, no associative arrays), and
 # herdr-plugin.toml's `command = ["bash", ...]` resolves whatever bash is on
 # PATH — so this stays 3.2-compatible: plain while-read loops and dedup via a
 # linear scan of a plain indexed array instead of `declare -A`.
 sessions_table="$HOME/.config/herdr/plugins/config/yuto729.review-bridge/sessions.tsv"
-[ -f "$sessions_table" ] || refuse "no session table at $sessions_table (is the review-bridge SessionStart hook installed?)"
 
 focused_pane=$(printf '%s' "${HERDR_PLUGIN_CONTEXT_JSON:-{}}" | jq -r '.focused_pane_id // empty' 2>/dev/null)
 [ -n "$focused_pane" ] || refuse "no focused pane in invocation context"
@@ -70,26 +75,47 @@ already_seen() {
   return 1
 }
 
-# The focused pane's most recent session entry (last-write-wins: a pane's
-# newest SessionStart supersedes any earlier session that ran there).
-transcript_path=$(awk -F'\t' -v p="$focused_pane" '$1 == p { t = $3 } END { print t }' "$sessions_table")
-[ -n "$transcript_path" ] || refuse "no recorded session for focused pane $focused_pane (start Claude Code in it, or add it to $sessions_table)"
+# Primary: the pane's interactive session id straight from herdr, mapped to
+# its transcript by the "<session_id>.jsonl under ~/.claude/projects/*/"
+# naming convention (a session id is a uuid, unique across projects).
+transcript_path=""
+session_id=$("$H" pane list 2>/dev/null |
+  jq -r --arg p "$focused_pane" \
+    '.result.panes[]? | select(.pane_id == $p) | .agent_session.value // empty' 2>/dev/null)
+if [ -n "$session_id" ]; then
+  for f in "$HOME/.claude/projects"/*/"$session_id".jsonl; do
+    [ -f "$f" ] && transcript_path="$f" && break
+  done
+fi
+
+# Fallback: the focused pane's most recent SessionStart-hook entry
+# (last-write-wins: a pane's newest SessionStart supersedes any earlier
+# session that ran there — including nested ones, which is why this is only
+# the fallback).
+if [ -z "$transcript_path" ] && [ -f "$sessions_table" ]; then
+  transcript_path=$(awk -F'\t' -v p="$focused_pane" '$1 == p { t = $3 } END { print t }' "$sessions_table")
+fi
+[ -n "$transcript_path" ] || refuse "no session found for focused pane $focused_pane (herdr reports no agent session, and no SessionStart-hook entry in $sessions_table)"
 [ -f "$transcript_path" ] || refuse "transcript missing: $transcript_path"
 
-# Every distinct cwd in the focused session's last 20 lines, newest first
-# (`tac` on GNU/Linux, `tail -r` on macOS/BSD where tac doesn't exist; awk
-# keeps the first = most recent occurrence).
-# All worktrees this one session recently touched are legitimate candidates —
-# but only this session's: worktrees from other panes' sessions never appear.
+# Every distinct cwd across the whole transcript, newest first (`tac` on
+# GNU/Linux, `tail -r` on macOS/BSD where tac doesn't exist; awk keeps the
+# first = most recent occurrence). The scan is deliberately unwindowed: most
+# lines carry the session's launch cwd, and a worktree the agent cd'd into
+# earlier falls out of any small tail window as soon as the conversation moves
+# on — which showed up as "opens the wrong directory" / "only one candidate".
+# Non-worktree cwds get filtered below, so scanning everything adds no noise.
+# All worktrees this one session touched are legitimate candidates — but only
+# this session's: worktrees from other panes' sessions never appear.
 if command -v tac >/dev/null 2>&1; then
   reverse_lines() { tac "$1"; }
 else
   reverse_lines() { tail -r "$1"; }
 fi
 
-cwds=$(reverse_lines "$transcript_path" 2>/dev/null | head -n 20 |
+cwds=$(reverse_lines "$transcript_path" 2>/dev/null |
   rg -o '"cwd":"([^"]*)"' -r '$1' 2>/dev/null | awk '!seen[$0]++')
-[ -n "$cwds" ] || refuse "no cwd found in the focused session's recent transcript lines"
+[ -n "$cwds" ] || refuse "no cwd found in the focused session's transcript"
 
 while IFS= read -r cwd; do
   [ -n "$cwd" ] || continue
