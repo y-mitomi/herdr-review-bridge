@@ -24,15 +24,17 @@ doesn't move once the agent `cd`s into a worktree internally; herdr's
 `pane.report_agent_session` is write-only). So this plugin maintains its
 own mapping:
 
-- A Claude Code `SessionStart` hook (`herdr/session-hook.sh`) records
+- A Claude Code hook (`herdr/session-hook.sh`, registered under both
+  `SessionStart` and `UserPromptSubmit`) records
   `<pane_id>\t<session_id>\t<transcript_path>` into
   `~/.config/herdr/plugins/config/yuto729.review-bridge/sessions.tsv`
-  every time a session starts inside a herdr pane.
-- `herdr/open.sh` looks up the focused pane's most recent entry, then
-  scans the last 20 lines of that session's transcript JSONL for every
-  distinct `cwd` it touched. Each resolves to a git worktree — all of
-  them are candidates (an agent can legitimately touch more than one),
-  but only from *this* session.
+  whenever a session starts — or speaks — inside a herdr pane.
+- `herdr/open.sh` resolves the pane's session from both that table and
+  herdr's own `pane list` `agent_session`, keeps whichever transcript was
+  written to more recently, then scans the whole transcript JSONL for
+  every distinct `cwd` it touched (newest first). Each resolves to a git
+  worktree — all of them are candidates (an agent can legitimately touch
+  more than one), but only from *this* session.
 - One candidate: opens directly. Two or more: opens an interactive `fzf`
   picker pane (`herdr/pick.sh`).
 
@@ -60,15 +62,33 @@ type = "plugin_action"
 command = "yuto729.review-bridge.open"
 ```
 
-### Claude Code SessionStart hook
+### Claude Code hooks
 
-Worktree resolution depends on `herdr/session-hook.sh` running as a
-Claude Code `SessionStart` hook. Add this to `~/.claude/settings.json`:
+Worktree resolution depends on `herdr/session-hook.sh` running as BOTH a
+`SessionStart` and a `UserPromptSubmit` hook. SessionStart alone goes
+stale: Claude Code fires no SessionStart on `/clear` or on a new
+conversation started inside a running process
+([anthropics/claude-code#34072](https://github.com/anthropics/claude-code/issues/34072),
+[#10373](https://github.com/anthropics/claude-code/issues/10373)), while
+UserPromptSubmit fires on every prompt, so the table re-converges as soon
+as you speak. Add this to `~/.claude/settings.json`:
 
 ```json
 {
   "hooks": {
     "SessionStart": [
+      {
+        "matcher": "*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash '<path-to-this-repo>/herdr/session-hook.sh'",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
       {
         "matcher": "*",
         "hooks": [
@@ -96,4 +116,4 @@ without the send-back feature.
 
 - [herdr](https://github.com/persiyanov/herdr) 0.7.5+
 - `jq`, `rg` (ripgrep), `fzf` on `PATH`
-- Claude Code, with the SessionStart hook above installed
+- Claude Code, with the hooks above installed
