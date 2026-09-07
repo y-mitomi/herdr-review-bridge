@@ -37,18 +37,28 @@ is_git_repo() { [ -n "$1" ] && git -C "$1" rev-parse --show-toplevel >/dev/null 
 # directory and `cd`s internally (this user's normal setup) — useless for
 # worktree resolution.
 #
-# Primary source (herdr 0.8.0+): `herdr pane list` exposes each pane's
-# `agent_session.value` — the pane's *interactive* Claude Code session id, as
-# reported by `herdr integration install claude`. This is authoritative:
-# unlike the SessionStart-hook table below, it can't be shadowed by nested
-# one-off `claude` invocations (skills/subprocesses) that start their own
-# sessions inside the same pane and also fire the hook.
+# Two sources, and NEITHER is reliably current on its own, so the winner is
+# whichever names the more recently written transcript:
 #
-# Fallback: session-hook.sh (registered as this user's Claude Code
-# SessionStart hook) records "<pane_id>\t<session_id>\t<transcript_path>"
-# into sessions_table for every session that ever started in a herdr pane;
-# the focused pane's latest entry names the transcript (last-write-wins, so
-# a nested session can win here — hence fallback only).
+# - `herdr pane list` (herdr 0.8.0+) exposes each pane's
+#   `agent_session.value` — the pane's *interactive* Claude Code session id.
+#   It can't be shadowed by nested one-off `claude` invocations
+#   (skills/subprocesses) that start their own sessions inside the pane, but
+#   it goes stale on /clear or an in-process new conversation: Claude Code
+#   fires no SessionStart there (anthropics/claude-code#34072, #10373), so
+#   nothing re-reports the new session to herdr.
+#
+# - session-hook.sh records "<pane_id>\t<session_id>\t<transcript_path>"
+#   into sessions_table, registered under BOTH SessionStart and
+#   UserPromptSubmit — the latter fires on every prompt, so this table
+#   re-converges on the pane's real session as soon as the user speaks after
+#   a /clear. Its weakness is the opposite one: nested sessions also fire
+#   the hooks, and last-write-wins can briefly point at one of those.
+#
+# Comparing transcript mtimes picks the live conversation in both failure
+# modes: a stale pointer's transcript stopped growing when its session died,
+# and a nested one-off's transcript stops growing the moment it exits, while
+# the pane's real session keeps writing.
 #
 # Either way the transcript is the JSONL file named "<session_id>.jsonl"
 # under ~/.claude/projects/*/, and every line in it (main chain or subagent
@@ -75,27 +85,55 @@ already_seen() {
   return 1
 }
 
-# Primary: the pane's interactive session id straight from herdr, mapped to
-# its transcript by the "<session_id>.jsonl under ~/.claude/projects/*/"
-# naming convention (a session id is a uuid, unique across projects).
-transcript_path=""
+# Candidate 1: the pane's session id as herdr knows it, mapped to its
+# transcript by the "<session_id>.jsonl under ~/.claude/projects/*/" naming
+# convention (a session id is a uuid, unique across projects).
+herdr_transcript=""
 session_id=$("$H" pane list 2>/dev/null |
   jq -r --arg p "$focused_pane" \
     '.result.panes[]? | select(.pane_id == $p) | .agent_session.value // empty' 2>/dev/null)
 if [ -n "$session_id" ]; then
   for f in "$HOME/.claude/projects"/*/"$session_id".jsonl; do
-    [ -f "$f" ] && transcript_path="$f" && break
+    [ -f "$f" ] && herdr_transcript="$f" && break
   done
 fi
 
-# Fallback: the focused pane's most recent SessionStart-hook entry
-# (last-write-wins: a pane's newest SessionStart supersedes any earlier
-# session that ran there — including nested ones, which is why this is only
-# the fallback).
-if [ -z "$transcript_path" ] && [ -f "$sessions_table" ]; then
-  transcript_path=$(awk -F'\t' -v p="$focused_pane" '$1 == p { t = $3 } END { print t }' "$sessions_table")
+# Candidate 2: the focused pane's most recent hook entry. The recorded path
+# is what Claude Code reported at hook time; if the session started in one
+# cwd and moved, the file may actually live under a different project dir,
+# so fall back to locating it by session id.
+hook_transcript=""
+if [ -f "$sessions_table" ]; then
+  hook_entry=$(awk -F'\t' -v p="$focused_pane" '$1 == p { l = $0 } END { print l }' "$sessions_table")
+  if [ -n "$hook_entry" ]; then
+    hook_transcript=$(printf '%s' "$hook_entry" | cut -f3)
+    if [ ! -f "$hook_transcript" ]; then
+      hook_sid=$(printf '%s' "$hook_entry" | cut -f2)
+      hook_transcript=""
+      for f in "$HOME/.claude/projects"/*/"$hook_sid".jsonl; do
+        [ -f "$f" ] && hook_transcript="$f" && break
+      done
+    fi
+  fi
 fi
-[ -n "$transcript_path" ] || refuse "no session found for focused pane $focused_pane (herdr reports no agent session, and no SessionStart-hook entry in $sessions_table)"
+
+# Newer transcript wins (see the source notes above). `stat -f %m` is
+# macOS/BSD, `stat -c %Y` is GNU.
+mtime_of() {
+  stat -f %m "$1" 2>/dev/null || stat -c %Y "$1" 2>/dev/null || echo 0
+}
+
+transcript_path=""
+if [ -n "$herdr_transcript" ] && [ -n "$hook_transcript" ] && [ "$herdr_transcript" != "$hook_transcript" ]; then
+  if [ "$(mtime_of "$hook_transcript")" -gt "$(mtime_of "$herdr_transcript")" ]; then
+    transcript_path="$hook_transcript"
+  else
+    transcript_path="$herdr_transcript"
+  fi
+else
+  transcript_path="${herdr_transcript:-$hook_transcript}"
+fi
+[ -n "$transcript_path" ] || refuse "no session found for focused pane $focused_pane (herdr reports no agent session, and no hook entry in $sessions_table)"
 [ -f "$transcript_path" ] || refuse "transcript missing: $transcript_path"
 
 # Every distinct cwd across the whole transcript, newest first (`tac` on
